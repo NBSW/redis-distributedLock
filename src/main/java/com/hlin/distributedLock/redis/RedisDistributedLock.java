@@ -1,8 +1,7 @@
-package com.hlin.distributedLock.redis;
+package com.es.service.index.common.lock;
 
 import org.apache.commons.lang3.StringUtils;
-
-import com.google.common.base.Preconditions;
+import org.elasticsearch.common.base.Preconditions;
 
 /**
  * 
@@ -92,29 +91,28 @@ public class RedisDistributedLock extends DistributedLock {
         if (setnx || fastfail) {
             return setnx ? true : false;
         }
-        // 3.setnx失败，说明锁仍然被其他对象保持，检查其是否已经超时
+        // 3.setnx失败，说明锁仍然被其他对象保持，检查其是否已经超时，未超时，则直接返回失败
         long oldValue = getLong(jedisManager.get(key));
-        if (oldValue < System.currentTimeMillis()) {
-            // 4.已经超时,则获取锁
-            long getSetValue = getLong(jedisManager.getSet(key, buildVal()));
-            // 5.key在当前方法执行过程中失效(即oldValue返回了0或者getSetValue返回了0)，故可再进行一次竞争
-            if (getSetValue == 0) {
-                // 6.true代表竞争成功，false则已被其他进程获取
-                return jedisManager.setnx(key, buildVal(), timeout);
-            }
-            if (getSetValue == oldValue) {
-                // 7.续租过期时间
-                if (jedisManager.expire(key, timeout)) {
-                    return true;
-                }
-                // 8.续租失败,key可能失效了，再获取一次
-                return jedisManager.setnx(key, buildVal(), timeout);
-            }
-            // 9.已被其他进程获取
+        if (oldValue > System.currentTimeMillis()) {
             return false;
         }
-        // 10.未超时，则直接返回失败
-        return false;
+        // 4.已经超时,则获取锁
+        long getSetValue = getLong(jedisManager.getSet(key, buildVal()));
+        // 5.key在当前方法执行过程中失效(即oldValue返回了0或者getSetValue返回了0)，故可再进行一次竞争
+        if (getSetValue == 0) {
+            // 6.true代表竞争成功，false则已被其他进程获取
+            return jedisManager.setnx(key, buildVal(), timeout);
+        }
+        // 7.已被其他进程获取(已被其他进程通过getset设置新值)
+        if (getSetValue != oldValue) {
+            return false;
+        }
+        // 8.获取成功，续租过期时间
+        if (jedisManager.expire(key, timeout)) {
+            return true;
+        }
+        // 9.续租失败,key可能失效了，再获取一次
+        return jedisManager.setnx(key, buildVal(), timeout);
     }
 
     /**
@@ -138,23 +136,21 @@ public class RedisDistributedLock extends DistributedLock {
      * @return
      */
     @Override
-    public boolean heartbeat() {
+    public void heartbeat() {
         // 1. 避免操作非自己获取得到的锁
-        if (check() && getLong(jedisManager.getSet(key, buildVal())) != 0) {
-            return true;
+        if (check()) {
+            jedisManager.getSet(key, buildVal());
         }
-        return false;
     }
 
     /**
      * 释放锁
      */
-    public boolean unLock() {
+    public void unLock() {
         // 1. 避免删除非自己获取得到的锁
         if (check()) {
-            return jedisManager.del(key);
+            jedisManager.del(key);
         }
-        return false;
     }
 
     /**
