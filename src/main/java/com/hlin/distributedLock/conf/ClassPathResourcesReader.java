@@ -143,10 +143,10 @@ public class ClassPathResourcesReader {
             ArrayList<Object> files = Lists.newArrayList();
             String[] list = file.list();
             for (String filePath : list) {
-                if (StringUtils.isEmpty(prefix) || !filePath.startsWith(prefix)) {
+                if (StringUtils.isBlank(prefix) || !filePath.startsWith(prefix)) {
                     continue;
                 }
-                if (StringUtils.isEmpty(suffix) || !filePath.endsWith(suffix)) {
+                if (StringUtils.isBlank(suffix) || !filePath.endsWith(suffix)) {
                     continue;
                 }
                 files.add(filePath);

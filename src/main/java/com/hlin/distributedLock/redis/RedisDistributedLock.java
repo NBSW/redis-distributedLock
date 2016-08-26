@@ -1,7 +1,8 @@
-package com.es.service.index.common.lock;
+package com.hlin.distributedLock.redis;
 
 import org.apache.commons.lang3.StringUtils;
-import org.elasticsearch.common.base.Preconditions;
+
+import com.google.common.base.Preconditions;
 
 /**
  * 
@@ -121,11 +122,7 @@ public class RedisDistributedLock extends DistributedLock {
      * @return
      */
     public boolean check() {
-        long current = System.currentTimeMillis();
-        if (current < getLong(jedisManager.get(key))) {
-            return true;
-        }
-        return false;
+        return System.currentTimeMillis() < getLong(jedisManager.get(key));
     }
 
     /**
@@ -136,21 +133,17 @@ public class RedisDistributedLock extends DistributedLock {
      * @return
      */
     @Override
-    public void heartbeat() {
+    public boolean heartbeat() {
         // 1. 避免操作非自己获取得到的锁
-        if (check()) {
-            jedisManager.getSet(key, buildVal());
-        }
+        return check() && getLong(jedisManager.getSet(key, buildVal())) != 0;
     }
 
     /**
      * 释放锁
      */
-    public void unLock() {
+    public boolean unLock() {
         // 1. 避免删除非自己获取得到的锁
-        if (check()) {
-            jedisManager.del(key);
-        }
+        return check() && jedisManager.del(key);
     }
 
     /**

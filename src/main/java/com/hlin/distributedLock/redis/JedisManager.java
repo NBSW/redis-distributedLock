@@ -38,9 +38,8 @@ public class JedisManager {
         ShardedJedis shardedJedis = shardedJedisPool.getResource();
         try {
             Long setnx = shardedJedis.setnx(key.getBytes(), value.getBytes());
-            if (setnx == 1 && seconds != -1) {
-                shardedJedis.expire(key, seconds);
-                return true;
+            if (setnx == 1) {
+                return seconds == -1 ? true : shardedJedis.expire(key, seconds) == 1;
             }
             return false;
         } catch (Exception e) {
@@ -59,10 +58,7 @@ public class JedisManager {
     public boolean expire(String key, int seconds) {
         ShardedJedis shardedJedis = shardedJedisPool.getResource();
         try {
-            if (shardedJedis.exists(key)) {
-
-            }
-            return shardedJedis.expire(key, seconds) == 1 ? true : false;
+            return shardedJedis.expire(key, seconds) == 1;
         } catch (Exception e) {
             shardedJedis.close();
             return false;
@@ -109,7 +105,7 @@ public class JedisManager {
     public boolean del(String key) {
         ShardedJedis shardedJedis = shardedJedisPool.getResource();
         try {
-            return shardedJedis.del(key) == 1 ? true : false;
+            return shardedJedis.del(key) == 1;
         } catch (Exception e) {
             shardedJedis.close();
             return false;
