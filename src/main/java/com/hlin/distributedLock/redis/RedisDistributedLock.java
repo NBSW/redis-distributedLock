@@ -22,24 +22,29 @@ public class RedisDistributedLock extends DistributedLock {
     /**
      * lock的key
      */
-    protected String key;
+    private String key;
 
     /**
      * lock的心跳时间(毫秒)
      * <p>
      * 必须满足(heartbeatTime <= timeout*1000)
      */
-    protected long heartbeatTime;
+    private long heartbeatTime;
 
     /**
      * lock的自然超时时间(秒)
      */
-    protected int timeout;
+    private int timeout;
+
+    /**
+     * 版本号时间，作为获取锁的客户端操作的依据
+     */
+    private long versionTime;
 
     /**
      * 是否快速失败
      */
-    protected boolean fastfail;
+    private boolean fastfail;
 
     /**
      * 
@@ -117,12 +122,13 @@ public class RedisDistributedLock extends DistributedLock {
     }
 
     /**
-     * 检查所是否有效,锁是否存在or锁是否已被其他进程重新获取
+     * 检查所是否有效,锁是否超时or锁是否已被其他进程重新获取
      * 
      * @return
      */
     public boolean check() {
-        return System.currentTimeMillis() < getLong(jedisManager.get(key));
+        long getVal = getLong(jedisManager.get(key));
+        return System.currentTimeMillis() < getVal && versionTime == getVal;
     }
 
     /**
@@ -165,6 +171,7 @@ public class RedisDistributedLock extends DistributedLock {
      * @return System.currentTimeMillis() + heartbeatTime + 1
      */
     private String buildVal() {
-        return String.valueOf(System.currentTimeMillis() + heartbeatTime + 1);
+        versionTime = System.currentTimeMillis() + heartbeatTime + 1;
+        return String.valueOf(versionTime);
     }
 }
