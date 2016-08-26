@@ -1,5 +1,5 @@
 # redis-distributedLock
-生产级的redis分布式锁，主要利用setnx，getset的原子操作。
+生产级的redis分布式锁。
 
 
 #测试代码
