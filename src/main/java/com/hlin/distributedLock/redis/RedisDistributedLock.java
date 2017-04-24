@@ -42,7 +42,7 @@ public class RedisDistributedLock extends DistributedLock {
     private long versionTime;
 
     /**
-     * 是否快速失败
+     * 是否快速失败，只进行一次最简单的setnx竞争
      */
     private boolean fastfail;
 
@@ -93,32 +93,61 @@ public class RedisDistributedLock extends DistributedLock {
     protected boolean lock() {
         // 1. 通过setnx试图获取一个lock,setnx成功，则成功获取一个锁
         boolean setnx = jedisManager.setnx(key, buildVal(), timeout);
-        // 2.快速失败，锁获取成功返回true,锁获取失败并且快速失败的为true则直接返回false
+        // 快速失败，锁获取成功返回true,锁获取失败并且快速失败的为true则直接返回false
         if (setnx || fastfail) {
             return setnx ? true : false;
         }
-        // 3.setnx失败，说明锁仍然被其他对象保持，检查其是否已经超时，未超时，则直接返回失败
+
+        // 2. setnx失败，说明锁仍然被其他对象保持，检查其是否已经超时并获取，未超时，则直接返回失败
         long oldValue = getLong(jedisManager.get(key));
+        //key在当前方法执行过程中失效,再进行一次竞争
+        if(oldValue == 0){
+            return jedisManager.setnx(key, buildVal(), timeout);
+        }
+        //未超时
         if (oldValue > System.currentTimeMillis()) {
             return false;
         }
-        // 4.已经超时,则获取锁
+
+        // 3.已经超时,则获取锁
         long getSetValue = getLong(jedisManager.getSet(key, buildVal()));
-        // 5.key在当前方法执行过程中失效(即oldValue返回了0或者getSetValue返回了0)，故可再进行一次竞争
+        // key在当前方法执行过程中失效，再进行一次竞争
         if (getSetValue == 0) {
-            // 6.true代表竞争成功，false则已被其他进程获取
             return jedisManager.setnx(key, buildVal(), timeout);
         }
-        // 7.已被其他进程获取(已被其他进程通过getset设置新值)
+        // 已被其他进程获取(已被其他进程通过getset设置新值)
         if (getSetValue != oldValue) {
             return false;
         }
-        // 8.获取成功，续租过期时间
+
+        // 4.续租过期时间
         if (jedisManager.expire(key, timeout)) {
             return true;
         }
-        // 9.续租失败,key可能失效了，再获取一次
-        return jedisManager.setnx(key, buildVal(), timeout);
+        //续租失败了,key可能失效了，则再获取一次
+        String time = getVal();
+        if(jedisManager.setnx(key, time, timeout)){
+            versionTime = Long.valueOf(time);
+            return true;
+        }
+
+        //5.无法续租，也无法获取
+        //续租失败（续租过程中key失效然后key又被其他进程获取），比对val值
+        if(versionTime != getLong(jedisManager.get(key))){
+            //已经被获取
+            return false;
+        }
+        //续租失败（可能为网络原因引起的），但key未失效，再续租一次
+        if (jedisManager.expire(key, timeout)) {
+            return true;
+        }
+
+        //6.最后还是无法续租锁（已经确定是自己的锁），则可以释放锁从新获取一次
+        if(unLock()){
+            return jedisManager.setnx(key, buildVal(), timeout);
+        }
+        Thread.currentThread().
+        throw new RuntimeException("获取锁异常，原因为：获取锁成功，但无法对锁进行续租！并且无法释放锁！");
     }
 
     /**
@@ -173,5 +202,15 @@ public class RedisDistributedLock extends DistributedLock {
     private String buildVal() {
         versionTime = System.currentTimeMillis() + heartbeatTime + 1;
         return String.valueOf(versionTime);
+    }
+
+    /**
+     * 生成val,当前系统时间+心跳时间
+     *
+     * @return System.currentTimeMillis() + heartbeatTime + 1
+     */
+    private String getVal() {
+        long time = System.currentTimeMillis() + heartbeatTime + 1;
+        return String.valueOf(time);
     }
 }

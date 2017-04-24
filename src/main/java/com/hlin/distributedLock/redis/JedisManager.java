@@ -58,7 +58,7 @@ public class JedisManager {
     public boolean expire(String key, int seconds) {
         ShardedJedis shardedJedis = shardedJedisPool.getResource();
         try {
-            return shardedJedis.expire(key, seconds) == 1;
+            return seconds == -1 ? true : shardedJedis.expire(key, seconds) == 1;
         } catch (Exception e) {
             shardedJedis.close();
             return false;
