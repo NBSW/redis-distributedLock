@@ -142,12 +142,12 @@ public class RedisDistributedLock extends DistributedLock {
             return true;
         }
 
-        //6.最后还是无法续租锁（已经确定是自己的锁），则可以释放锁从新获取一次
-        if(unLock()){
-            return jedisManager.setnx(key, buildVal(), timeout);
+        //6.最后还是无法续租锁（检查未失效确定是自己的锁），则抛弃异常，不是自己的锁再次竞争或者放弃
+        if(check()){
+            throw new RuntimeException("获取锁异常，原因为：获取锁成功，但无法对锁进行续租！");
         }
-        Thread.currentThread().
-        throw new RuntimeException("获取锁异常，原因为：获取锁成功，但无法对锁进行续租！并且无法释放锁！");
+        //可能是检查时失效，或者失效又被其他进程获取，所以最后在获取一次
+        return jedisManager.setnx(key, buildVal(), timeout);
     }
 
     /**
